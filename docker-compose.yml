@@ -1,0 +1,46 @@
+
+services:
+  ts-app:
+    build: 
+      context: . 
+      dockerfile: Dockerfile 
+    environment:
+      - SPRING_PROFILES_ACTIVE=mysql
+    container_name: timeseries-app
+    ports:
+      - "8080:8080"
+    depends_on:
+      ts-mysql:
+        condition: service_healthy
+
+  ts-mysql:
+    image: mysql:5.7
+    container_name: ts-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ToKmInD1
+      MYSQL_DATABASE: timeseries
+      MYSQL_USER: sole
+      MYSQL_PASSWORD: nostrum
+    healthcheck:
+      test: ["CMD", "mysql", "--user=sole", "--password=nostrum", "-e", "SELECT 1;"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db-init:/docker-entrypoint-initdb.d
+    command: ['mysqld', '--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci']
+
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: ts-phpmyadmin
+    environment:
+      PMA_HOST: ts-mysql
+      MYSQL_ROOT_PASSWORD: ToKmInD1
+    ports:
+      - "8081:80"
+    depends_on:
+      - ts-mysql

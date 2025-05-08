@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>Idősor Megjelenítő</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .safety-window {
+            background-color: #ffe6e6;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        select, input {
+            margin: 5px;
+            padding: 5px;
+        }
+    </style>
+    <style>
+        .api-docs {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .api-docs a {
+            color: #0d6efd;
+            text-decoration: none;
+        }
+        .api-docs a:hover {
+            text-decoration: underline;
+        }
+    </style>
+    <style>
+        /* Meglévő stílusok után... */
+        .hidden {
+            display: none;
+        }
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f2f2f2;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .toggle-button {
+            padding: 5px 10px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+<div class="api-docs">
+    <h3>API Documentation</h3>
+    <p>View and test the REST API endpoints using <a href="/swagger-ui/index.html" target="_blank">Swagger UI</a></p>
+</div>
+<div class="controls">
+    <select id="powerStationSelect">
+        <option value="">Válassz erőművet...</option>
+    </select>
+    <input type="date" id="dateSelect" disabled>
+    <button id="loadButton" disabled>Betöltés</button>
+</div>
+<div id="tableContainer"></div>
+
+<script>
+    const API_BASE_URL = 'http://localhost:8080/api/time-series'; // Állítsd be a megfelelő API URL-t
+
+    // DOM elemek
+    const powerStationSelect = document.getElementById('powerStationSelect');
+    const dateSelect = document.getElementById('dateSelect');
+    const loadButton = document.getElementById('loadButton');
+    const tableContainer = document.getElementById('tableContainer');
+
+    // Erőművek betöltése
+    async function loadPowerStations() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/power-stations`);
+            const stations = await response.json();
+            stations.forEach(station => {
+                const option = document.createElement('option');
+                option.value = station;
+                option.textContent = station;
+                powerStationSelect.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Hiba az erőművek betöltésekor:', error);
+        }
+    }
+
+    // Dátumok betöltése
+    async function loadDates(powerStation) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/power-stations/${powerStation}/dates`);
+            const dates = await response.json();
+            dateSelect.innerHTML = '<option value="">Válassz dátumot...</option>';
+            dates.forEach(date => {
+                const option = document.createElement('option');
+                option.value = date;
+                option.textContent = date;
+                dateSelect.appendChild(option);
+            });
+            dateSelect.disabled = false;
+        } catch (error) {
+            console.error('Hiba a dátumok betöltésekor:', error);
+        }
+    }
+
+    async function loadTimeSeriesData(powerStation, date) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/power-stations/${powerStation}/dates/${date}`);
+            const data = await response.json();
+
+            // Táblázat konténer létrehozása fejléccel
+            let content = `
+            <div class="table-header">
+                <h3>${powerStation} - ${date}</h3>
+                <button class="toggle-button" onclick="toggleTable()">Összecsuk</button>
+            </div>
+            <div id="tableContent">
+        `;
+
+            // Táblázat fejléc létrehozása
+            content += '<table><thead><tr><th>Időpont</th>';
+            data.versions.forEach(version => {
+                const ts = version.timestamp;
+                const date = new Date(ts[0], ts[1]-1, ts[2], ts[3], ts[4], ts[5]);
+
+                content += `<th>Verzió ${version.version}<br>(${date.toLocaleString('hu-HU')}))</th>`;
+            });
+            content += '</tr></thead><tbody>';
+
+            // Táblázat sorok létrehozása
+            data.rows.forEach(row => {
+                const rowClass = row.inSafetyWindow ? 'safety-window' : '';
+                content += `<tr class="${rowClass}"><td>${row.timeSlot}</td>`;
+                data.versions.forEach(version => {
+                    const value = row.versionValues[version.version] ?? '';
+                    content += `<td>${value}</td>`;
+                });
+                content += '</tr>';
+            });
+
+            content += '</tbody></table></div>';
+            tableContainer.innerHTML = content;
+        } catch (error) {
+            console.error('Hiba az idősor adatok betöltésekor:', error);
+        }
+    }
+
+    // Event listeners
+    powerStationSelect.addEventListener('change', (e) => {
+        if (e.target.value) {
+            loadDates(e.target.value);
+            loadButton.disabled = true;
+        } else {
+            dateSelect.disabled = true;
+            dateSelect.innerHTML = '<option value="">Válassz dátumot...</option>';
+            loadButton.disabled = true;
+        }
+    });
+
+    dateSelect.addEventListener('change', (e) => {
+        loadButton.disabled = !e.target.value;
+    });
+
+    loadButton.addEventListener('click', () => {
+        const powerStation = powerStationSelect.value;
+        const date = dateSelect.value;
+        if (powerStation && date) {
+            loadTimeSeriesData(powerStation, date);
+        }
+    });
+
+    // Kezdeti erőművek betöltése
+    loadPowerStations();
+</script>
+<script>
+    function toggleTable() {
+        const tableContent = document.getElementById('tableContent');
+        const toggleButton = document.querySelector('.toggle-button');
+
+        if (tableContent.classList.contains('hidden')) {
+            tableContent.classList.remove('hidden');
+            toggleButton.textContent = 'Összecsuk';
+        } else {
+            tableContent.classList.add('hidden');
+            toggleButton.textContent = 'Kinyit';
+        }
+    }
+
+</script>
+
+
+</body>
+</html>
